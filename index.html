@@ -40,14 +40,14 @@ const W = canvas.width, H = canvas.height, GROUND = 80;
 
 // Tuning
 const GRAVITY = 0.45, FLAP = -7.5, PIPE_GAP = 160, PIPE_W = 64, PIPE_SPEED = 2.6, PIPE_EVERY = 95;
-const HOME_X = 100, BOUNCE = 0.75; // where the ball drifts back to; how bouncy the cups are
+const HOME_X = 100, BOUNCE = 0.75; // where the ball sits; how bouncy the ceiling is
 
 let state, bird, pipes, frame, score, best = 0;
 try { best = Number(localStorage.getItem("flappy-best")) || 0; } catch {}
 
 function reset() {
   state = "ready"; // ready -> playing -> over
-  bird = { x: HOME_X, y: H / 2, vx: 0, vy: 0, r: 14 };
+  bird = { x: HOME_X, y: H / 2, vy: 0, r: 14 };
   pipes = [];
   frame = 0;
   score = 0;
@@ -68,41 +68,22 @@ addEventListener("pointerdown", e => {
 
 function addPipe() {
   const top = 60 + Math.random() * (H - GROUND - PIPE_GAP - 120);
-  pipes.push({ x: W, top, scored: false, lastBounce: -99 });
+  pipes.push({ x: W, top, scored: false });
 }
 
-// Bounce the ball off one rectangle of a cup (cups move left, so bounce relative to them)
-function bounceOff(left, top, right, bottom) {
+// Does the ball touch this rectangle (one half of a cup)?
+function touches(left, top, right, bottom) {
   const cx = Math.max(left, Math.min(bird.x, right));
   const cy = Math.max(top, Math.min(bird.y, bottom));
-  let dx = bird.x - cx, dy = bird.y - cy;
-  let dist = Math.hypot(dx, dy);
-  if (dist >= bird.r) return false;
-  if (dist === 0) { dx = -1; dy = 0; dist = 1; } // centre inside the cup: push it back out the front
-  const nx = dx / dist, ny = dy / dist;
-  bird.x = cx + nx * bird.r;
-  bird.y = cy + ny * bird.r;
-  const rvx = bird.vx + PIPE_SPEED, along = rvx * nx + bird.vy * ny;
-  if (along < 0) {
-    bird.vx = rvx - (1 + BOUNCE) * along * nx - PIPE_SPEED;
-    bird.vy = bird.vy - (1 + BOUNCE) * along * ny;
-    return true;
-  }
-  return false;
+  return Math.hypot(bird.x - cx, bird.y - cy) < bird.r;
 }
 
-// Scoring: 1 point per bounce off a cup (max one per cup every quarter second, so
-// rattling against a cup can't farm points), 2 points for passing through a gap
-const BOUNCE_POINTS = 1, PASS_POINTS = 2;
-
-function bounceOffCup(p) {
-  const hitTop = bounceOff(p.x, -100, p.x + PIPE_W, p.top);
-  const hitBottom = bounceOff(p.x, p.top + PIPE_GAP, p.x + PIPE_W, H - GROUND);
-  if ((hitTop || hitBottom) && frame - p.lastBounce > 15) {
-    score += BOUNCE_POINTS;
-    p.lastBounce = frame;
-  }
+function hitsCup(p) {
+  return touches(p.x, -100, p.x + PIPE_W, p.top) || touches(p.x, p.top + PIPE_GAP, p.x + PIPE_W, H - GROUND);
 }
+
+// Scoring: 1 point for each cup passed
+const PASS_POINTS = 1;
 
 // Online leaderboard (Supabase). If the internet or Supabase is down, the game
 // still works; the leaderboard just says it's unavailable.
@@ -198,21 +179,17 @@ function update() {
 
   bird.vy += GRAVITY;
   bird.y += bird.vy;
-  // After a bounce the ball drifts back to its home spot
-  bird.vx = (bird.vx + (HOME_X - bird.x) * 0.02) * 0.92;
-  bird.x += bird.vx;
 
   if (frame % PIPE_EVERY === 0) addPipe();
   for (const p of pipes) {
     p.x -= PIPE_SPEED;
     if (!p.scored && p.x + PIPE_W < bird.x) { p.scored = true; score += PASS_POINTS; }
-    bounceOffCup(p);
   }
   pipes = pipes.filter(p => p.x + PIPE_W > 0);
 
-  // Ceiling is bouncy too; the ground or getting knocked off-screen ends the game
+  // Touching a cup or the ground ends the game; the ceiling is bouncy
+  if (pipes.some(hitsCup) || bird.y + bird.r > H - GROUND) { gameOver(); return; }
   if (bird.y - bird.r < 0) { bird.y = bird.r; bird.vy = Math.abs(bird.vy) * BOUNCE; }
-  if (bird.y + bird.r > H - GROUND || bird.x + bird.r < 0) gameOver();
 }
 
 function text(str, y, size, color = "#fff") {

@@ -5,7 +5,7 @@ A simple Flappy Bird browser game. Single file: `index.html` (HTML canvas + plai
 - **Run it:** open `index.html` in a browser (`open index.html`).
 - **Look:** the player is a ping pong ball; obstacles are red solo cups (white rim faces the gap), styled after the original Flappy Bird. Background is a night-time city (starry sky, moon, buildings with lit windows).
 - **Mobile-first:** made for phones. Auto play was removed on purpose; the screen fills the phone and page zoom/scroll is blocked so taps go to the game.
-- **Controls:** tap anywhere to flap (a mouse click counts as a tap on computers; no keyboard controls). Scoring: 2 points per cup passed, 1 point per bounce off a cup (ceiling bounces score nothing); the ball bounces off cups and the ceiling, and the game ends on hitting the ground or being pushed off the left edge; best score saved in the browser.
+- **Controls:** tap anywhere to flap (a mouse click counts as a tap on computers; no keyboard controls). Scoring: 1 point per cup passed. Touching a cup or the ground ends the game (no cup bounces, removed on purpose); the ceiling is still bouncy and scores nothing; best score saved in the browser.
 - **Tuning:** gravity, flap strength, pipe gap and speed are constants near the top of the script.
 - Owner is new to coding: explain changes in plain English.
 - **Online:** hosted on GitHub Pages at https://collegecryps.github.io/flappy-bird/ (repo: github.com/collegecryps/flappy-bird). Pushing to `main` updates the live site.
