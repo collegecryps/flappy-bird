@@ -8,3 +8,4 @@ A simple Flappy Bird browser game. Single file: `index.html` (HTML canvas + plai
 - **Controls:** click, tap or Space to flap (when auto play is off). Scoring: 2 points per cup passed, 1 point per bounce off a cup (ceiling bounces score nothing); the ball bounces off cups and the ceiling, and the game ends on hitting the ground or being pushed off the left edge; best score saved in the browser.
 - **Tuning:** gravity, flap strength, pipe gap and speed are constants near the top of the script.
 - Owner is new to coding: explain changes in plain English.
+- **Online:** hosted on GitHub Pages at https://collegecryps.github.io/flappy-bird/ (repo: github.com/collegecryps/flappy-bird). Pushing to `main` updates the live site.
