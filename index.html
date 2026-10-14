@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flappy Bird</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1d2b3a; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif; }
+  canvas { background: #0b1033; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.4); max-width: 100vw; max-height: 100vh; cursor: pointer; touch-action: manipulation; }
+</style>
+</head>
+<body>
+<canvas id="game" width="400" height="600"></canvas>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height, GROUND = 80;
+
+// Tuning
+const GRAVITY = 0.45, FLAP = -7.5, PIPE_GAP = 160, PIPE_W = 64, PIPE_SPEED = 2.6, PIPE_EVERY = 95;
+const HOME_X = 100, BOUNCE = 0.75; // where the ball drifts back to; how bouncy the cups are
+
+let state, bird, pipes, frame, score, best = 0;
+try { best = Number(localStorage.getItem("flappy-best")) || 0; } catch {}
+
+function reset() {
+  state = "ready"; // ready -> playing -> over
+  bird = { x: HOME_X, y: H / 2, vx: 0, vy: 0, r: 14 };
+  pipes = [];
+  frame = 0;
+  score = 0;
+}
+
+function flap() {
+  if (state === "ready") state = "playing";
+  if (state === "playing") bird.vy = FLAP;
+  else if (state === "over" && frame > 30) reset();
+}
+
+// Auto play: the game flies itself (and restarts itself). Press A to switch it on/off.
+let auto = true;
+
+canvas.addEventListener("pointerdown", () => { if (!auto) flap(); });
+addEventListener("keydown", e => {
+  if (e.code === "Space") { e.preventDefault(); if (!auto) flap(); }
+  if (e.code === "KeyA") auto = !auto;
+});
+
+function autoPilot() {
+  if (state === "ready" && frame > 60) flap();
+  else if (state === "over" && frame > 90) reset();
+  else if (state === "playing") {
+    // Aim a little below the middle of the next gap; flap when falling past it
+    const next = pipes.find(p => p.x + PIPE_W > bird.x - bird.r);
+    const target = next ? next.top + PIPE_GAP / 2 + 20 : H / 2;
+    if (bird.y > target && bird.vy > 0) flap();
+  }
+}
+
+function addPipe() {
+  const top = 60 + Math.random() * (H - GROUND - PIPE_GAP - 120);
+  pipes.push({ x: W, top, scored: false, lastBounce: -99 });
+}
+
+// Bounce the ball off one rectangle of a cup (cups move left, so bounce relative to them)
+function bounceOff(left, top, right, bottom) {
+  const cx = Math.max(left, Math.min(bird.x, right));
+  const cy = Math.max(top, Math.min(bird.y, bottom));
+  let dx = bird.x - cx, dy = bird.y - cy;
+  let dist = Math.hypot(dx, dy);
+  if (dist >= bird.r) return false;
+  if (dist === 0) { dx = -1; dy = 0; dist = 1; } // centre inside the cup: push it back out the front
+  const nx = dx / dist, ny = dy / dist;
+  bird.x = cx + nx * bird.r;
+  bird.y = cy + ny * bird.r;
+  const rvx = bird.vx + PIPE_SPEED, along = rvx * nx + bird.vy * ny;
+  if (along < 0) {
+    bird.vx = rvx - (1 + BOUNCE) * along * nx - PIPE_SPEED;
+    bird.vy = bird.vy - (1 + BOUNCE) * along * ny;
+    return true;
+  }
+  return false;
+}
+
+// Scoring: 1 point per bounce off a cup (max one per cup every quarter second, so
+// rattling against a cup can't farm points), 2 points for passing through a gap
+const BOUNCE_POINTS = 1, PASS_POINTS = 2;
+
+function bounceOffCup(p) {
+  const hitTop = bounceOff(p.x, -100, p.x + PIPE_W, p.top);
+  const hitBottom = bounceOff(p.x, p.top + PIPE_GAP, p.x + PIPE_W, H - GROUND);
+  if ((hitTop || hitBottom) && frame - p.lastBounce > 15) {
+    score += BOUNCE_POINTS;
+    p.lastBounce = frame;
+  }
+}
+
+function gameOver() {
+  state = "over";
+  frame = 0;
+  if (score > best) {
+    best = score;
+    try { localStorage.setItem("flappy-best", best); } catch {}
+  }
+}
+
+function update() {
+  frame++;
+  if (auto) autoPilot();
+  if (state === "ready") { bird.y = H / 2 + Math.sin(frame / 10) * 8; return; }
+  if (state === "over") { if (bird.y < H - GROUND - bird.r) { bird.vy += GRAVITY; bird.y += bird.vy; } return; }
+
+  bird.vy += GRAVITY;
+  bird.y += bird.vy;
+  // After a bounce the ball drifts back to its home spot
+  bird.vx = (bird.vx + (HOME_X - bird.x) * 0.02) * 0.92;
+  bird.x += bird.vx;
+
+  if (frame % PIPE_EVERY === 0) addPipe();
+  for (const p of pipes) {
+    p.x -= PIPE_SPEED;
+    if (!p.scored && p.x + PIPE_W < bird.x) { p.scored = true; score += PASS_POINTS; }
+    bounceOffCup(p);
+  }
+  pipes = pipes.filter(p => p.x + PIPE_W > 0);
+
+  // Ceiling is bouncy too; the ground or getting knocked off-screen ends the game
+  if (bird.y - bird.r < 0) { bird.y = bird.r; bird.vy = Math.abs(bird.vy) * BOUNCE; }
+  if (bird.y + bird.r > H - GROUND || bird.x + bird.r < 0) gameOver();
+}
+
+function text(str, y, size, color = "#fff") {
+  ctx.font = `bold ${size}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.lineWidth = size / 6;
+  ctx.strokeStyle = "#333";
+  ctx.strokeText(str, W / 2, y);
+  ctx.fillStyle = color;
+  ctx.fillText(str, W / 2, y);
+}
+
+// Background (night sky, stars, moon, city, bushes) is drawn once and reused every frame
+const bg = document.createElement("canvas");
+bg.width = W; bg.height = H;
+(function drawBackground() {
+  const b = bg.getContext("2d");
+  const base = H - GROUND;
+  let seed = 7;
+  const rand = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  // Night sky: deep navy at the top fading to purple near the city glow
+  const sky = b.createLinearGradient(0, 0, 0, base);
+  sky.addColorStop(0, "#0b1033");
+  sky.addColorStop(0.6, "#2a2160");
+  sky.addColorStop(1, "#5a3a7a");
+  b.fillStyle = sky;
+  b.fillRect(0, 0, W, H);
+  // Stars
+  for (let i = 0; i < 90; i++) {
+    b.fillStyle = `rgba(255,255,255,${0.4 + rand() * 0.6})`;
+    const s = rand() < 0.15 ? 2 : 1;
+    b.fillRect(rand() * W, rand() * (base - 150), s, s);
+  }
+  // Moon with a soft glow
+  const glow = b.createRadialGradient(W - 70, 80, 10, W - 70, 80, 70);
+  glow.addColorStop(0, "rgba(255,250,220,.35)");
+  glow.addColorStop(1, "rgba(255,250,220,0)");
+  b.fillStyle = glow;
+  b.fillRect(W - 140, 10, 140, 140);
+  b.fillStyle = "#fff8dc";
+  b.beginPath(); b.arc(W - 70, 80, 24, 0, Math.PI * 2); b.fill();
+  b.fillStyle = "#e8dfb8";
+  b.beginPath(); b.arc(W - 78, 74, 5, 0, Math.PI * 2); b.arc(W - 62, 90, 3.5, 0, Math.PI * 2); b.fill();
+  // City skyline: a far, faded row of buildings, then a closer, darker row with lit windows
+  function skyline(body, minH, maxH, windows) {
+    for (let x = -4; x < W; ) {
+      const w = 18 + rand() * 26, h = minH + rand() * (maxH - minH);
+      b.fillStyle = body;
+      b.fillRect(x, base - h, w, h);
+      if (windows)
+        for (let wy = base - h + 6; wy < base - 22; wy += 9)
+          for (let wx = x + 4; wx < x + w - 6; wx += 7) {
+            if (rand() < 0.35) continue; // some windows are dark
+            b.fillStyle = rand() < 0.8 ? "#ffd86b" : "#9fd8ff";
+            b.fillRect(wx, wy, 3, 4);
+          }
+      x += w + (windows ? 2 : 0);
+    }
+  }
+  skyline("#2b2550", 90, 170, false);
+  skyline("#16142e", 50, 120, true);
+  // Bushes (dark green in the moonlight)
+  b.fillStyle = "#1f5a3a";
+  for (let x = -10; x < W + 30; x += 28) {
+    b.beginPath(); b.arc(x, base - 18 + Math.cos(x) * 4, 22, 0, Math.PI * 2); b.fill();
+  }
+  b.fillRect(0, base - 18, W, 18);
+})();
+
+// A red solo cup: wide white rim facing the gap, tapering toward its base
+function drawPipe(x, y, h, rimAtBottom) {
+  const rimY = rimAtBottom ? y + h : y;   // edge next to the gap
+  const baseY = rimAtBottom ? y : y + h;  // far edge
+  const dir = rimAtBottom ? -1 : 1;       // from rim toward base
+  const rimHalf = PIPE_W / 2 + 6, baseHalf = PIPE_W / 2 - 8, cx = x + PIPE_W / 2;
+  const halfAt = yy => rimHalf + (baseHalf - rimHalf) * Math.abs(yy - rimY) / Math.max(h, 1);
+
+  const grad = ctx.createLinearGradient(x, 0, x + PIPE_W, 0);
+  grad.addColorStop(0, "#a3121c");
+  grad.addColorStop(0.3, "#ff5a5f");
+  grad.addColorStop(0.45, "#e4232f");
+  grad.addColorStop(1, "#8e0f18");
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = "#4a1018";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx - rimHalf, rimY);
+  ctx.lineTo(cx + rimHalf, rimY);
+  ctx.lineTo(cx + baseHalf, baseY);
+  ctx.lineTo(cx - baseHalf, baseY);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  // Ridges near the base, like a real solo cup
+  ctx.strokeStyle = "rgba(74,16,24,.45)";
+  ctx.lineWidth = 2;
+  for (let i = 1; i <= 3; i++) {
+    const yy = baseY - dir * i * 14;
+    if (Math.abs(yy - rimY) < 40) break;
+    const hw = halfAt(yy);
+    ctx.beginPath(); ctx.moveTo(cx - hw, yy); ctx.lineTo(cx + hw, yy); ctx.stroke();
+  }
+
+  // White rim band
+  const bandH = 14, bandY = rimAtBottom ? rimY - bandH : rimY;
+  ctx.fillStyle = "#f4f4f4";
+  ctx.strokeStyle = "#4a1018";
+  ctx.lineWidth = 3;
+  ctx.fillRect(cx - rimHalf - 2, bandY, rimHalf * 2 + 4, bandH);
+  ctx.strokeRect(cx - rimHalf - 2, bandY, rimHalf * 2 + 4, bandH);
+}
+
+let groundX = 0, ballSpin = 0;
+
+function draw() {
+  ctx.drawImage(bg, 0, 0);
+
+  // Pipes
+  for (const p of pipes) {
+    drawPipe(p.x, -20, p.top + 20, true);
+    drawPipe(p.x, p.top + PIPE_GAP, H - GROUND - p.top - PIPE_GAP, false);
+  }
+
+  // Ground with scrolling stripes
+  if (state !== "over") groundX = (groundX - PIPE_SPEED) % 24;
+  ctx.fillStyle = "#ded895";
+  ctx.fillRect(0, H - GROUND, W, GROUND);
+  ctx.fillStyle = "#9be659";
+  ctx.fillRect(0, H - GROUND, W, 18);
+  ctx.fillStyle = "#73bf2e";
+  for (let x = groundX; x < W; x += 24) {
+    ctx.beginPath();
+    ctx.moveTo(x, H - GROUND + 18); ctx.lineTo(x + 12, H - GROUND);
+    ctx.lineTo(x + 24, H - GROUND); ctx.lineTo(x + 12, H - GROUND + 18);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#543847";
+  ctx.fillRect(0, H - GROUND - 2, W, 3);
+  ctx.fillStyle = "#c9be6f";
+  ctx.fillRect(0, H - GROUND + 18, W, 4);
+
+  // Player: a ping pong ball that spins as it flies
+  ctx.save();
+  ctx.translate(bird.x, bird.y);
+  const shade = ctx.createRadialGradient(-5, -5, 2, 0, 0, bird.r);
+  shade.addColorStop(0, "#ffffff");
+  shade.addColorStop(0.7, "#f4f1ea");
+  shade.addColorStop(1, "#cfcabd");
+  ctx.fillStyle = shade;
+  ctx.strokeStyle = "#8a8578";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(0, 0, bird.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // Seam line, rotating so the ball looks like it's spinning
+  if (state !== "over") ballSpin += 0.12;
+  ctx.strokeStyle = "rgba(138,133,120,.25)";
+  ctx.beginPath(); ctx.ellipse(0, 0, bird.r, bird.r * 0.35, ballSpin, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+
+  // Score / screens
+  if (state === "playing") text(score, 80, 56);
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(0,0,0,.45)";
+  ctx.fillText(auto ? "AUTO PLAY ON \u00b7 press A to play yourself" : "press A for auto play", 10, H - 12);
+  if (state === "ready") {
+    text("Flappy Bird", 160, 48, "#f7d51d");
+    text(auto ? "Watch it play itself" : "Click or press Space to flap", 400, 20);
+    text(`Best: ${best}`, 440, 22);
+  }
+  if (state === "over") {
+    text("Game Over", 180, 48, "#f05a28");
+    text(`Score: ${score}`, 250, 30);
+    text(`Best: ${best}`, 290, 30);
+    if (frame > 30) text(auto ? "Restarting\u2026" : "Click to play again", 380, 22);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+reset();
+loop();
+</script>
+</body>
+</html>
