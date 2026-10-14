@@ -2,11 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Flappy Bird</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #1d2b3a; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif; }
-  canvas { background: #0b1033; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.4); max-width: 100vw; max-height: 100vh; cursor: pointer; touch-action: manipulation; }
+  /* Fill the phone screen and stop the page from scrolling, zooming or selecting text when tapped */
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #1d2b3a; display: flex; align-items: center; justify-content: center; font-family: system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  canvas { background: #0b1033; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.4); width: min(100vw, calc(100dvh * 2 / 3)); height: auto; }
 </style>
 </head>
 <body>
@@ -37,25 +41,8 @@ function flap() {
   else if (state === "over" && frame > 30) reset();
 }
 
-// Auto play: the game flies itself (and restarts itself). Press A to switch it on/off.
-let auto = true;
-
-canvas.addEventListener("pointerdown", () => { if (!auto) flap(); });
-addEventListener("keydown", e => {
-  if (e.code === "Space") { e.preventDefault(); if (!auto) flap(); }
-  if (e.code === "KeyA") auto = !auto;
-});
-
-function autoPilot() {
-  if (state === "ready" && frame > 60) flap();
-  else if (state === "over" && frame > 90) reset();
-  else if (state === "playing") {
-    // Aim a little below the middle of the next gap; flap when falling past it
-    const next = pipes.find(p => p.x + PIPE_W > bird.x - bird.r);
-    const target = next ? next.top + PIPE_GAP / 2 + 20 : H / 2;
-    if (bird.y > target && bird.vy > 0) flap();
-  }
-}
+// Tap anywhere on the screen to flap
+addEventListener("pointerdown", e => { e.preventDefault(); flap(); });
 
 function addPipe() {
   const top = 60 + Math.random() * (H - GROUND - PIPE_GAP - 120);
@@ -106,7 +93,6 @@ function gameOver() {
 
 function update() {
   frame++;
-  if (auto) autoPilot();
   if (state === "ready") { bird.y = H / 2 + Math.sin(frame / 10) * 8; return; }
   if (state === "over") { if (bird.y < H - GROUND - bird.r) { bird.vy += GRAVITY; bird.y += bird.vy; } return; }
 
@@ -287,20 +273,16 @@ function draw() {
 
   // Score / screens
   if (state === "playing") text(score, 80, 56);
-  ctx.font = "bold 14px system-ui, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillStyle = "rgba(0,0,0,.45)";
-  ctx.fillText(auto ? "AUTO PLAY ON \u00b7 press A to play yourself" : "press A for auto play", 10, H - 12);
   if (state === "ready") {
     text("Flappy Bird", 160, 48, "#f7d51d");
-    text(auto ? "Watch it play itself" : "Click or press Space to flap", 400, 20);
+    text("Tap to flap", 400, 24);
     text(`Best: ${best}`, 440, 22);
   }
   if (state === "over") {
     text("Game Over", 180, 48, "#f05a28");
     text(`Score: ${score}`, 250, 30);
     text(`Best: ${best}`, 290, 30);
-    if (frame > 30) text(auto ? "Restarting\u2026" : "Click to play again", 380, 22);
+    if (frame > 30) text("Tap to play again", 380, 22);
   }
 }
 
